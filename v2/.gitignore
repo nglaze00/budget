@@ -1,0 +1,12 @@
+node_modules
+.next
+.env
+.env.local
+budget.db
+budget.db-shm
+budget.db-wal
+budget.db-journal
+drizzle/meta
+# Personal bank-statement CSVs used for one-time backfills — not for sharing.
+backfill/
+tsconfig.tsbuildinfo
