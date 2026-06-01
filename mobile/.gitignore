@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native build artifacts
+android/build/
+android/.gradle/
+android/app/build/
+android/app/.cxx/
+ios/build/
+*.bundle
+
+# Signing keys & secrets — never commit these
+*.keystore
+*.jks
+
+# Logs
+*.log
+
+# OS / IDE
+.DS_Store
