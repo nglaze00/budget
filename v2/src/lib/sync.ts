@@ -118,6 +118,21 @@ function overrideWins(
   return incomingWins(localUpdatedAt, incomingUpdatedAt, incomingIsPhone);
 }
 
+// Resolve a paycheck-split conflict. Snapshots only carry user-sourced splits, so every
+// incoming split is user-tier. A user split must beat a local txn that has only auto
+// (or no) splits regardless of timestamps — historical user splits carry an epoch-0
+// (1970-01-01) updated_at, so a tie can't be broken on time. Only when the local txn
+// ALSO already has user splits do we fall back to last-writer-wins.
+function paycheckSplitWins(
+  localHasUser: boolean,
+  localUpdatedAt: string | null,
+  incomingUpdatedAt: string | null,
+  incomingIsPhone: boolean,
+): boolean {
+  if (!localHasUser) return true;
+  return incomingWins(localUpdatedAt, incomingUpdatedAt, incomingIsPhone);
+}
+
 // Build a snapshot of this device's syncable data.
 export async function buildSnapshot(role: DeviceRole): Promise<Snapshot> {
   ensureSyncSchema();
@@ -316,11 +331,13 @@ export async function mergeSnapshot(snap: Snapshot, localRole: DeviceRole): Prom
     // Only attach if the transaction exists locally after replay.
     const txnExists = db.all<{ n: number }>(sql`SELECT COUNT(*) AS n FROM transactions WHERE transaction_id = ${txnId}`)[0]?.n ?? 0;
     if (txnExists === 0) continue;
-    const localUpdated = db.all<{ updatedAt: string | null }>(
-      sql`SELECT MAX(updated_at) AS updatedAt FROM paycheck_splits WHERE transaction_id = ${txnId} AND source = 'user'`,
-    )[0]?.updatedAt ?? null;
+    const localUser = db.all<{ updatedAt: string | null; n: number }>(
+      sql`SELECT MAX(updated_at) AS updatedAt, COUNT(*) AS n FROM paycheck_splits WHERE transaction_id = ${txnId} AND source = 'user'`,
+    )[0];
+    const localHasUser = (localUser?.n ?? 0) > 0;
+    const localUpdated = localUser?.updatedAt ?? null;
     const incomingUpdated = splits.reduce<string | null>((acc, s) => (ts(s.updatedAt) > ts(acc) ? s.updatedAt : acc), null);
-    if (incomingWins(localUpdated, incomingUpdated, incomingIsPhone)) {
+    if (paycheckSplitWins(localHasUser, localUpdated, incomingUpdated, incomingIsPhone)) {
       db.run(sql`DELETE FROM paycheck_splits WHERE transaction_id = ${txnId}`);
       for (const s of splits) {
         db.run(sql`
